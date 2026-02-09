@@ -1,7 +1,12 @@
 package ru.vlaach.studyhelper
 
+
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,17 +15,21 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.pager.PageSize
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.material3.TimePicker
-import androidx.compose.material3.rememberTimePickerState
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.animation.*
+import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.delay
-
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
@@ -31,6 +40,7 @@ import java.util.Locale
 @Composable
 fun LessonCard(
     lesson: Lesson,
+    subjectColor: Color,
     onHomeworkChecked: (Boolean) -> Unit,
     onHomeworkClick: () -> Unit,
     onEdit: () -> Unit,
@@ -38,15 +48,15 @@ fun LessonCard(
     isMasterMode: Boolean,
     isHighlighted: Boolean
 ) {
+    val containerColor = if (isHighlighted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+    val contentColor = if (isHighlighted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+    val titleColor = if (isHighlighted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
+    val labelColor = if (isHighlighted) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.secondary
+
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
             .clickable { if (!isMasterMode) onHomeworkClick() },
-        colors = CardDefaults.cardColors(
-            containerColor = if (isHighlighted)
-                MaterialTheme.colorScheme.tertiaryContainer
-            else
-                MaterialTheme.colorScheme.surfaceVariant
-        ),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
         border = if (isHighlighted)
             androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
         else null,
@@ -57,41 +67,41 @@ fun LessonCard(
             verticalAlignment = Alignment.Top
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(60.dp)) {
-                Text(text = lesson.startTime, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(text = lesson.startTime, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = contentColor)
                 if (lesson.endTime.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Box(modifier = Modifier.width(4.dp).height(30.dp).background(lesson.subjectColor, RoundedCornerShape(2.dp)))
+                    Box(modifier = Modifier.width(4.dp).height(30.dp).background(subjectColor, RoundedCornerShape(2.dp)))
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = lesson.endTime, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = lesson.endTime, style = MaterialTheme.typography.bodySmall, color = contentColor.copy(alpha = 0.8f))
                 }
             }
             Spacer(modifier = Modifier.width(16.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = lesson.title, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
+                Text(text = lesson.title, style = MaterialTheme.typography.titleLarge, color = titleColor)
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                     if (lesson.room.isNotEmpty()) {
-                        Icon(Icons.Default.LocationOn, "Кабинет", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
-                        Text(text = lesson.room, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(start = 2.dp, end = 8.dp))
+                        Icon(Icons.Default.LocationOn, "Кабинет", Modifier.size(14.dp), tint = labelColor)
+                        Text(text = lesson.room, style = MaterialTheme.typography.bodyMedium, color = contentColor, modifier = Modifier.padding(start = 2.dp, end = 8.dp))
                     }
                     if (lesson.teacher.isNotEmpty()) {
-                        Icon(Icons.Default.Person, "Учитель", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.secondary)
-                        Text(text = lesson.teacher, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 2.dp))
+                        Icon(Icons.Default.Person, "Учитель", Modifier.size(14.dp), tint = labelColor)
+                        Text(text = lesson.teacher, style = MaterialTheme.typography.bodyMedium, color = contentColor, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 2.dp))
                     }
                 }
                 if (isHighlighted) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("ИДЁТ СЕЙЧАС", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text("ИДЁТ СЕЙЧАС", style = MaterialTheme.typography.labelSmall, color = labelColor, fontWeight = FontWeight.Bold)
                 }
                 if (lesson.homework.isNotBlank() && !isMasterMode) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "ДЗ: ${lesson.homework}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
+                    Text(text = "ДЗ: ${lesson.homework}", style = MaterialTheme.typography.bodyMedium, color = if(isHighlighted) contentColor else MaterialTheme.colorScheme.tertiary)
                 }
             }
 
             Column(horizontalAlignment = Alignment.End) {
                 IconButton(onClick = onEdit, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Edit, "Изменить", tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Default.Edit, "Изменить", tint = labelColor)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
@@ -99,7 +109,15 @@ fun LessonCard(
                 }
                 if (!isMasterMode) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Checkbox(checked = lesson.isCompleted, onCheckedChange = onHomeworkChecked)
+                    Checkbox(
+                        checked = lesson.isCompleted,
+                        onCheckedChange = onHomeworkChecked,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = titleColor,
+                            uncheckedColor = labelColor,
+                            checkmarkColor = containerColor
+                        )
+                    )
                 }
             }
         }
@@ -146,7 +164,7 @@ fun CountdownWidget(viewModel: ScheduleViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleScreen(viewModel: ScheduleViewModel) {
-
+    val context = LocalContext.current
     val isMasterMode by viewModel.isMasterScheduleMode
     val lessons = viewModel.lessonsForCurrentView
     val tabs = viewModel.weekTabs
@@ -156,6 +174,7 @@ fun ScheduleScreen(viewModel: ScheduleViewModel) {
     val isModified = viewModel.isCurrentDayModified
 
     var showResetDialog by remember { mutableStateOf(false) }
+    var showMenu by remember { mutableStateOf(false) }
 
     var currentTime by remember { mutableStateOf(LocalTime.now()) }
     LaunchedEffect(Unit) {
@@ -167,6 +186,47 @@ fun ScheduleScreen(viewModel: ScheduleViewModel) {
 
     val (activeLesson, state) = viewModel.getCurrentOrNextLesson(currentTime)
     val activeLessonId = if (state == "ENDS_IN") activeLesson?.id else null
+
+    var totalDrag by remember { mutableStateOf(0f) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        uri?.let {
+            try {
+                context.contentResolver.openOutputStream(it)?.use { stream ->
+                    stream.write(viewModel.getJsonForExport().toByteArray())
+                }
+                Toast.makeText(context, "Расписание сохранено", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, "Ошибка сохранения: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            try {
+                val stringBuilder = StringBuilder()
+                context.contentResolver.openInputStream(it)?.use { stream ->
+                    BufferedReader(InputStreamReader(stream)).forEachLine { line ->
+                        stringBuilder.append(line)
+                    }
+                }
+                if (viewModel.importFromJson(stringBuilder.toString())) {
+                    Toast.makeText(context, "Расписание загружено!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Ошибка: Неверный формат файла", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(context, "Ошибка чтения файла", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     if (viewModel.showAddLessonDialog.value) {
         val editingLesson = viewModel.lessonToEdit.value
@@ -227,6 +287,30 @@ fun ScheduleScreen(viewModel: ScheduleViewModel) {
                     ) {
                         if (isMasterMode) Icon(Icons.Default.Check, "Готово") else Icon(Icons.Default.Edit, "Изм. шаблон")
                     }
+
+                    Box {
+                        IconButton(onClick = { showMenu = true }) {
+                            Icon(Icons.Default.MoreVert, "Меню")
+                        }
+                        DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Экспорт (Сохранить)") },
+                                onClick = {
+                                    showMenu = false
+                                    exportLauncher.launch("study_helper_backup.json")
+                                },
+                                leadingIcon = { Icon(Icons.Default.Share, null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Импорт (Загрузить)") },
+                                onClick = {
+                                    showMenu = false
+                                    importLauncher.launch(arrayOf("application/json"))
+                                },
+                                leadingIcon = { Icon(Icons.Default.Refresh, null) }
+                            )
+                        }
+                    }
                 }
             )
         },
@@ -279,7 +363,7 @@ fun ScheduleScreen(viewModel: ScheduleViewModel) {
             }
 
             ScrollableTabRow(
-                selectedTabIndex = if(isMasterMode) tabs.indexOf(selectedMasterDay) else tabs.indexOf(selectedDate),
+                selectedTabIndex = if(isMasterMode) tabs.indexOf(selectedMasterDay) else tabs.indexOf(selectedDate).coerceAtLeast(0),
                 edgePadding = 0.dp
             ) {
                 tabs.forEachIndexed { index, tab ->
@@ -300,33 +384,101 @@ fun ScheduleScreen(viewModel: ScheduleViewModel) {
                 }
             }
 
-            CountdownWidget(viewModel = viewModel)
+            val initialPage = remember(isMasterMode) {
+                if (isMasterMode) {
+                    viewModel.selectedMasterDay.value.ordinal
+                } else {
+                    viewModel.getPageIndexFromDate(viewModel.selectedDate.value)
+                }
+            }
 
-            when {
-                isHoliday -> {
-                    Box(Modifier.fillMaxSize().padding(32.dp), Alignment.Center) {
-                        Text("Выходной день", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.secondary)
+            val pagerState = rememberPagerState(
+                initialPage = initialPage,
+                pageCount = { if (isMasterMode) 7 else Int.MAX_VALUE }
+            )
+
+            LaunchedEffect(pagerState.currentPage) {
+                viewModel.setSelectedDateByPage(pagerState.currentPage)
+            }
+
+            LaunchedEffect(selectedDate, selectedMasterDay) {
+                val targetPage = if (isMasterMode) {
+                    selectedMasterDay.ordinal
+                } else {
+                    viewModel.getPageIndexFromDate(selectedDate)
+                }
+                if (pagerState.currentPage != targetPage) {
+                    pagerState.animateScrollToPage(targetPage)
+                }
+            }
+
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f),
+                beyondViewportPageCount = 1,
+                key = { page -> page }
+            ) { page ->
+
+                val dateForPage = remember(page, isMasterMode) {
+                    if (isMasterMode) {
+                        DayOfWeek.values()[page % 7]
+                    } else {
+                        viewModel.getDateFromPageIndex(page)
                     }
                 }
-                lessons.isEmpty() -> {
-                    Box(Modifier.fillMaxSize().padding(32.dp), Alignment.Center) {
-                        Text(
-                            if (isMasterMode) "Шаблон пуст." else "Уроков нет.",
-                            style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+
+                val pageData by remember(dateForPage) {
+                    derivedStateOf {
+                        viewModel.getDataForAnimation(dateForPage)
                     }
                 }
-                else -> {
-                    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 80.dp)) {
-                        items(lessons, key = { it.id }) { lesson ->
+
+                val (pageLessons, pageIsHoliday) = pageData
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 80.dp)
+                ) {
+                    item {
+                        val isToday = if (isMasterMode) false else (dateForPage == LocalDate.now())
+
+                        if (isToday && activeLesson != null) {
+                            CountdownWidget(viewModel = viewModel)
+                        }
+                    }
+
+                    if (pageIsHoliday) {
+                        item {
+                            Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) {
+                                Text("Выходной день", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.secondary)
+                            }
+                        }
+                    } else if (pageLessons.isEmpty()) {
+                        item {
+                            Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) {
+                                Text(
+                                    if (isMasterMode) "Шаблон пуст." else "Уроков нет.",
+                                    style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else {
+                        items(
+                            items = pageLessons,
+                            key = { it.id },
+                            contentType = { "lesson" }
+                        ) { lesson ->
+                            val color = remember(lesson.title) { viewModel.getSubjectColor(lesson.title) }
+
                             LessonCard(
                                 lesson = lesson,
+                                subjectColor = color,
                                 onHomeworkChecked = { viewModel.toggleHomeworkCompletion(lesson.id) },
                                 onHomeworkClick = { viewModel.showHomeworkDialog.value = lesson },
                                 onEdit = { viewModel.onEditClicked(lesson) },
                                 onDelete = { viewModel.deleteLesson(lesson.id) },
                                 isMasterMode = isMasterMode,
-                                isHighlighted = (lesson.id == activeLessonId)
+                                isHighlighted = (lesson.id == activeLessonId) && (if(!isMasterMode) dateForPage == LocalDate.now() else false)
                             )
                         }
                     }

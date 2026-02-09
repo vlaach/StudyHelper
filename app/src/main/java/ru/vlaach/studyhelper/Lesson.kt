@@ -9,7 +9,6 @@ data class Lesson(
     val endTime: String,
     val room: String,
     val teacher: String,
-    val subjectColor: Color,
     var isCompleted: Boolean = false,
     var homework: String = ""
 ) {

@@ -41,6 +41,9 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     var showAddLessonDialog = mutableStateOf(false)
     var showHomeworkDialog = mutableStateOf<Lesson?>(null)
 
+    val anchorDate: LocalDate = LocalDate.now()
+    val START_INDEX = Int.MAX_VALUE / 2
+
 
     val weekTabs: List<Any>
         get() = if (isMasterScheduleMode.value) {
@@ -84,6 +87,25 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             }
             return false
         }
+
+    fun getDateFromPageIndex(index: Int): LocalDate {
+        val diff = index - START_INDEX
+        return anchorDate.plusDays(diff.toLong())
+    }
+
+    fun getPageIndexFromDate(date: LocalDate): Int {
+        val diff = java.time.temporal.ChronoUnit.DAYS.between(anchorDate, date)
+        return START_INDEX + diff.toInt()
+    }
+
+    fun setSelectedDateByPage(page: Int) {
+        if (isMasterScheduleMode.value) {
+            val days = DayOfWeek.values()
+            selectedMasterDay.value = days[page % 7]
+        } else {
+            selectedDate.value = getDateFromPageIndex(page)
+        }
+    }
 
     fun getCurrentOrNextLesson(currentTime: LocalTime): Pair<Lesson?, String> {
         if (isMasterScheduleMode.value || selectedDate.value != LocalDate.now()) return null to ""
@@ -165,7 +187,6 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         val newLesson = Lesson(
             id = nextId.getAndIncrement(),
             title = title, startTime = startTime, endTime = endTime, room = room, teacher = teacher,
-            subjectColor = getSubjectColor(title)
         )
         if (isMasterScheduleMode.value) {
             val day = selectedMasterDay.value
@@ -182,7 +203,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     private fun editLessonInternal(id: Int, title: String, startTime: String, endTime: String, room: String, teacher: String) {
         val updater: (List<Lesson>?) -> List<Lesson> = { list ->
             list?.map {
-                if (it.id == id) it.copy(title = title, startTime = startTime, endTime = endTime, room = room, teacher = teacher, subjectColor = getSubjectColor(title))
+                if (it.id == id) it.copy(title = title, startTime = startTime, endTime = endTime, room = room, teacher = teacher)
                 else it
             } ?: emptyList()
         }
@@ -203,7 +224,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             }
 
             _specificSchedule[date] = list.map {
-                if (it.id == targetId) it.copy(title = title, startTime = startTime, endTime = endTime, room = room, teacher = teacher, subjectColor = getSubjectColor(title))
+                if (it.id == targetId) it.copy(title = title, startTime = startTime, endTime = endTime, room = room, teacher = teacher)
                 else it
             }
         }
@@ -289,17 +310,31 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    private fun getSubjectColor(subject: String): Color {
+    fun getSubjectColor(subject: String): Color {
         val s = subject.lowercase()
         return when {
-            "math" in s || "алгеб" in s || "геом" in s || "матем" in s -> Color(0xFFE57373)
-            "lit" in s || "лит" in s || "рус" in s -> Color(0xFFFFF176)
-            "phys" in s || "физ" in s -> Color(0xFF64B5F6)
-            "bio" in s || "био" in s -> Color(0xFF81C784)
-            "hist" in s || "ист" in s -> Color(0xFFFFB74D)
-            "eng" in s || "анг" in s -> Color(0xFFBA68C8)
-            "pe" in s || "fiz" in s || "спорт" in s -> Color(0xFFA1887F)
-            else -> Color(0xFFE0E0E0)
+            "алгеб" in s || "math" in s -> Color(0xFFE57373)
+            "геом" in s -> Color(0xFFFFB74D)
+            "вер и ст" in s || "вероят" in s -> Color(0xFF4DB6AC)
+            "информ" in s || "cs" in s || "it" in s -> Color(0xFF4FC3F7)
+
+            "рус" in s -> Color(0xFFFFD54F)
+            "лит" in s -> Color(0xFFFDD835)
+            "анг" in s || "eng" in s -> Color(0xFF7986CB)
+
+            "физ" in s && "культ" !in s -> Color(0xFF64B5F6)
+            "хим" in s -> Color(0xFF9575CD)
+            "био" in s -> Color(0xFF81C784)
+            "геогр" in s -> Color(0xFF4DD0E1)
+
+            "ист" in s -> Color(0xFFA1887F)
+            "обществ" in s -> Color(0xFFBA68C8)
+            "обзр" in s || "обж" in s -> Color(0xFFAED581)
+
+            "физическая" in s || "культ" in s || "спорт" in s || "pe" in s -> Color(0xFF90A4AE)
+            "проект" in s -> Color(0xFFB0BEC5)
+
+            else -> Color(0xFF78909C)
         }
     }
 
@@ -352,5 +387,82 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             val maxId = (_specificSchedule.values.flatten() + _masterSchedule.values.flatten()).maxOfOrNull { it.id } ?: 100
             nextId.set(maxId + 1)
         } catch (e: Exception) { e.printStackTrace() }
+    }
+
+    fun getJsonForExport(): String {
+        val backup = ScheduleBackup(
+            specificSchedule = _specificSchedule.entries.associate { it.key.toString() to it.value },
+            masterSchedule = _masterSchedule.entries.associate { it.key.name to it.value },
+            specificHolidays = specificHolidays.value.map { it.toString() },
+            masterHolidays = masterHolidays.value.map { it.name }
+        )
+        return gson.toJson(backup)
+    }
+
+    fun importFromJson(json: String): Boolean {
+        return try {
+            val backup = gson.fromJson(json, ScheduleBackup::class.java)
+
+            _specificSchedule.clear()
+            backup.specificSchedule.forEach { (k, v) -> _specificSchedule[LocalDate.parse(k)] = v }
+
+            _masterSchedule.clear()
+            backup.masterSchedule.forEach { (k, v) -> _masterSchedule[DayOfWeek.valueOf(k)] = v }
+
+            specificHolidays.value = backup.specificHolidays.map { LocalDate.parse(it) }.toSet()
+            masterHolidays.value = backup.masterHolidays.map { DayOfWeek.valueOf(it) }.toSet()
+
+            saveData()
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    fun selectNextDay() {
+        if (isMasterScheduleMode.value) {
+            val days = DayOfWeek.values()
+            val nextIndex = (days.indexOf(selectedMasterDay.value) + 1) % days.size
+            selectedMasterDay.value = days[nextIndex]
+        } else {
+            val current = selectedDate.value
+            val next = current.plusDays(1)
+            selectedDate.value = next
+        }
+    }
+
+    fun selectPreviousDay() {
+        if (isMasterScheduleMode.value) {
+            val days = DayOfWeek.values()
+            val currentIndex = days.indexOf(selectedMasterDay.value)
+            val prevIndex = if (currentIndex - 1 < 0) days.size - 1 else currentIndex - 1
+            selectedMasterDay.value = days[prevIndex]
+        } else {
+            selectedDate.value = selectedDate.value.minusDays(1)
+        }
+    }
+
+    fun getDataForAnimation(dateOrDay: Any): Pair<List<Lesson>, Boolean> {
+        if (isMasterScheduleMode.value) {
+            if (dateOrDay is DayOfWeek) {
+                val isHol = masterHolidays.value.contains(dateOrDay)
+                val lessons = _masterSchedule[dateOrDay]?.sortedBy { it.startTime } ?: emptyList()
+                return lessons to isHol
+            }
+        } else {
+            if (dateOrDay is LocalDate) {
+                val isHol = isHoliday(dateOrDay)
+                val lessons = if (isHol) emptyList() else {
+                    if (_specificSchedule.containsKey(dateOrDay)) {
+                        _specificSchedule[dateOrDay]?.sortedBy { it.startTime } ?: emptyList()
+                    } else {
+                        _masterSchedule[dateOrDay.dayOfWeek]?.map { it.copy() }?.sortedBy { it.startTime } ?: emptyList()
+                    }
+                }
+                return lessons to isHol
+            }
+        }
+        return emptyList<Lesson>() to false
     }
 }
