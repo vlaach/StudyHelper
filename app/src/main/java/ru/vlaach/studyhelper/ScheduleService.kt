@@ -83,6 +83,8 @@ class ScheduleService : Service() {
             if (isFreshStart || isTransition) {
                 sendAlertNotification("Урок начался", "${activeLesson.title} ${if (activeLesson.room.isNotEmpty()) "(каб. ${activeLesson.room})" else ""}")
             }
+
+            lastActiveLessonId = activeLesson.id
         } else if (lastActiveLessonId != null && activeLesson == null) {
             val justFinished = lessons.find { it.id == lastActiveLessonId }
             if (justFinished != null) {
